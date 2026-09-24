@@ -1,4 +1,6 @@
 using AiHelpdesk.Api.Data;
+using AiHelpdesk.Api.Services;
+using AiHelpdesk.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +11,14 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddOpenApi();
 
+builder.Services.AddScoped(typeof(IBaseService<>), typeof(BaseService<>));
+
+builder.Services.AddScoped<ITicketService, TicketService>();
+
+builder.Services.AddScoped(
+    typeof(IBaseService<>),
+    typeof(BaseService<>));
+    
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
