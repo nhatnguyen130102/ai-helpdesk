@@ -1,12 +1,19 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using AiHelpdesk.Api.DTOs;
+using AiHelpdesk.Api.DTOs.Common;
 
-namespace AiHelpdesk.Api.Services.Interfaces
+namespace AiHelpdesk.Api.Services.Interfaces;
+
+public interface IAuthService
 {
-    public interface IAuthService
-    {
-        
-    }
+    Task<BaseResponse<AuthResponseDTO>> RegisterAsync(
+        RegisterDTO DTO);
+
+    Task<BaseResponse<AuthResponseDTO>> LoginAsync(
+        LoginDTO DTO);
+
+    Task<BaseResponse<AuthResponseDTO>> RefreshTokenAsync(
+        RefreshTokenDTO dto);
+
+    Task<BaseResponse<bool>> LogoutAsync(
+        string refreshToken);
 }

@@ -1,230 +1,296 @@
 using AiHelpdesk.Api.Data;
+using AiHelpdesk.Api.DTOs;
 using AiHelpdesk.Api.DTOs.Common;
 using AiHelpdesk.Api.Entities;
+using AiHelpdesk.Api.Helper;
 using AiHelpdesk.Api.Services.Interfaces;
+using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 
 namespace AiHelpdesk.Api.Services;
 
-public class BaseService<TEntity> : IBaseService<TEntity>
+public abstract class BaseService<
+    TEntity,
+    TCreateDto,
+    TUpdateDto,
+    TGetAllDto,
+    TGetByIdDto,
+    TFilterDto>
+    : IBaseService<
+        TEntity,
+        TCreateDto,
+        TUpdateDto,
+        TGetAllDto,
+        TGetByIdDto,
+        TFilterDto>
     where TEntity : BaseEntity
+    where TFilterDto : BaseFilter
 {
     protected readonly ApplicationDbContext _context;
     protected readonly DbSet<TEntity> _dbSet;
-
-    public BaseService(ApplicationDbContext context)
+    protected readonly IMapper _mapper;
+    protected BaseService(ApplicationDbContext context, IMapper mapper)
     {
         _context = context;
+        _mapper = mapper;
         _dbSet = context.Set<TEntity>();
     }
 
     #region Get By Id
 
-    public virtual async Task<BaseResponse<TEntity?>> GetByIdAsync(int id)
+    public virtual async Task<BaseResponse<TGetByIdDto?>> GetByIdAsync(
+        int id)
     {
-        var entity = await _dbSet
+        return await ExecuteAsync(async () =>
+        {
+            var entity = await _dbSet
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id);
 
-        if (entity == null)
-        {
-            return ErrorResponse<TEntity?>(
-                "Data not found.",
-                StatusCodes.Status404NotFound);
-        }
+            if (entity == null)
+            {
+                return ResponseHelper.ErrorResponse<TGetByIdDto?>(
+                    "Data not found.",
+                    StatusCodes.Status404NotFound);
+            }
 
-        return SuccessResponse<TEntity?>(
-            entity,
-            "Data retrieved successfully.",
-            StatusCodes.Status200OK);
+            var dto = _mapper.Map<TGetByIdDto>(entity);
+
+            return ResponseHelper.SuccessResponse<TGetByIdDto?>(
+                dto,
+                "Data retrieved successfully.",
+                StatusCodes.Status200OK);
+        });
     }
 
     #endregion
 
     #region Get All
 
-    public virtual async Task<BaseResponse<List<TEntity>>> GetAllAsync()
+    public virtual async Task<BaseResponse<List<TGetAllDto>>> GetAllAsync()
     {
-        var entities = await _dbSet
-            .AsNoTracking()
-            .ToListAsync();
+        return await ExecuteAsync(async () =>
+{
+    var entities = await _dbSet
+                .AsNoTracking()
+                .ToListAsync();
 
-        return SuccessResponse(
-            entities,
-            "Data retrieved successfully.",
-            StatusCodes.Status200OK);
-    }
+    var dto = _mapper.Map<List<TGetAllDto>>(entities.ToList());
 
-    #endregion
+    return ResponseHelper.SuccessResponse(
+        dto,
+        "Data retrieved successfully.",
+        StatusCodes.Status200OK);
+});
 
-    #region Get Paged
-
-    public virtual async Task<BaseResponse<PagedResult<TEntity>>> GetPagedAsync(
-        int page = 1,
-        int pageSize = 20)
-    {
-        if (page < 1)
-        {
-            page = 1;
-        }
-
-        if (pageSize < 1)
-        {
-            pageSize = 20;
-        }
-
-        if (pageSize > 100)
-        {
-            pageSize = 100;
-        }
-
-        var query = _dbSet
-            .AsNoTracking()
-            .AsQueryable();
-
-        var totalItems = await query.CountAsync();
-
-        var items = await query
-            .OrderBy(x => x.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-
-        var result = new PagedResult<TEntity>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalItems = totalItems
-        };
-
-        return SuccessResponse(
-            result,
-            "Data retrieved successfully.",
-            StatusCodes.Status200OK);
     }
 
     #endregion
 
     #region Create
 
-    public virtual async Task<BaseResponse<TEntity>> CreateAsync(
-        TEntity entity)
+    public virtual async Task<BaseResponse<TGetByIdDto?>> CreateAsync(
+        TCreateDto dto)
     {
-        if (entity == null)
-        {
-            return ErrorResponse<TEntity>(
-                "Entity cannot be null.",
-                StatusCodes.Status400BadRequest);
-        }
+        return await ExecuteAsync(async () =>
+{
+    if (dto == null)
+    {
+        return ResponseHelper.ErrorResponse<TGetByIdDto?>(
+            "Request data cannot be null.",
+            StatusCodes.Status400BadRequest);
+    }
 
-        entity.CreatedDate = DateTime.UtcNow;
-        entity.UpdatedDate = DateTime.UtcNow;
+    var entity = _mapper.Map<TEntity>(dto);
+    entity.Code = await GenerateCodeAsync();
+    entity.CreatedDate = DateTime.UtcNow;
+    entity.UpdatedDate = DateTime.UtcNow;
+    entity.IsActive = true;
 
-        _dbSet.Add(entity);
+    await _dbSet.AddAsync(entity);
+    await _context.SaveChangesAsync();
 
-        await _context.SaveChangesAsync();
+    var result = _mapper.Map<TGetByIdDto>(entity);
 
-        return SuccessResponse(
-            entity,
-            "Created successfully.",
-            StatusCodes.Status201Created);
+    return ResponseHelper.SuccessResponse<TGetByIdDto?>(
+        result,
+        "Created successfully.",
+        StatusCodes.Status201Created);
+});
+
     }
 
     #endregion
 
     #region Update
 
-    public virtual async Task<BaseResponse<TEntity?>> UpdateAsync(
-        int id,
-        TEntity entity)
+    public virtual async Task<BaseResponse<TGetByIdDto?>> UpdateAsync(
+     int id,
+     TUpdateDto dto)
     {
-        if (entity == null)
+        return await ExecuteAsync(async () =>
         {
-            return ErrorResponse<TEntity?>(
-                "Entity cannot be null.",
-                StatusCodes.Status400BadRequest);
-        }
+            if (dto == null)
+            {
+                return ResponseHelper.ErrorResponse<TGetByIdDto?>(
+                    "Request data cannot be null.",
+                    StatusCodes.Status400BadRequest);
+            }
 
-        var existingEntity = await _dbSet
-            .FirstOrDefaultAsync(x => x.Id == id);
+            var entity = await _dbSet
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-        if (existingEntity == null)
-        {
-            return ErrorResponse<TEntity?>(
-                "Data not found.",
-                StatusCodes.Status404NotFound);
-        }
+            if (entity == null)
+            {
+                return ResponseHelper.ErrorResponse<TGetByIdDto?>(
+                    "Data not found.",
+                    StatusCodes.Status404NotFound);
+            }
 
-        entity.Id = id;
-        entity.UpdatedDate = DateTime.UtcNow;
+            _mapper.Map(dto, entity);
 
-        _context.Entry(existingEntity).CurrentValues.SetValues(entity);
+            entity.UpdatedDate = DateTime.UtcNow;
+            entity.UpdatedBy = "Admin";
 
-        await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync();
 
-        return SuccessResponse<TEntity?>(
-            existingEntity,
-            "Updated successfully.",
-            StatusCodes.Status200OK);
+            var result = _mapper.Map<TGetByIdDto>(entity);
+
+            return ResponseHelper.SuccessResponse<TGetByIdDto?>(
+                result,
+                "Updated successfully.",
+                StatusCodes.Status200OK);
+        });
     }
 
     #endregion
 
     #region Delete
 
-    public virtual async Task<BaseResponse<bool>> DeleteAsync(int id)
+    public virtual async Task<BaseResponse<bool>> DeleteAsync(
+        int id)
     {
-        var entity = await _dbSet
-            .FirstOrDefaultAsync(x => x.Id == id);
-
-        if (entity == null)
+        return await ExecuteAsync(async () =>
         {
-            return ErrorResponse<bool>(
-                "Data not found.",
-                StatusCodes.Status404NotFound);
+            var entity = await _dbSet
+                    .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (entity == null)
+            {
+                return ResponseHelper.ErrorResponse<bool>(
+                    "Data not found.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            _dbSet.Remove(entity);
+
+            await _context.SaveChangesAsync();
+
+            return ResponseHelper.SuccessResponse(
+                true,
+                "Deleted successfully.",
+                StatusCodes.Status200OK);
+        });
+    }
+
+    #endregion
+
+    #region Get Paged
+    public virtual async Task<BaseResponse<PagedResult<TGetAllDto>>> GetPagedAsync(
+    TFilterDto filter)
+    {
+        return await ExecuteAsync(async () =>
+        {
+            var page = Math.Max(1, filter.Page);
+            var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+
+            var query = _dbSet
+                .AsNoTracking();
+
+            query = ApplyFilter(query, filter);
+
+            var totalItems = await query.CountAsync();
+
+            var entities = await query
+                .OrderBy(x => x.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var items = _mapper.Map<List<TGetAllDto>>(entities);
+
+            var result = new PagedResult<TGetAllDto>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalItems = totalItems
+            };
+
+            return ResponseHelper.SuccessResponse(
+                result,
+                "Data retrieved successfully.");
+        });
+    }
+    #endregion
+
+    #region Helpers
+    protected virtual IQueryable<TEntity> ApplyFilter(
+    IQueryable<TEntity> query,
+    TFilterDto filter)
+    {
+        return query;
+    }
+
+    private async Task<string> GenerateCodeAsync()
+    {
+        var prefix = typeof(TEntity).Name
+            .ToUpper()
+            .Substring(0, 2);
+
+        var lastCode = await _dbSet
+            .OrderByDescending(x => x.Id)
+            .Select(x => x.Code)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(lastCode))
+        {
+            return $"{prefix}-0001";
         }
 
-        _dbSet.Remove(entity);
+        var numberPart = lastCode.Substring(prefix.Length);
 
-        await _context.SaveChangesAsync();
+        var nextNumber = int.Parse(numberPart) + 1;
 
-        return SuccessResponse(
-            true,
-            "Deleted successfully.",
-            StatusCodes.Status200OK);
+        return $"{prefix}{nextNumber:D4}";
     }
-
+    protected async Task<BaseResponse<T>> ExecuteAsync<T>(
+    Func<Task<BaseResponse<T>>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (DbUpdateException ex)
+        {
+            return ResponseHelper.ErrorResponse<T>(
+            ex.InnerException?.Message ?? ex.Message,
+            StatusCodes.Status500InternalServerError);
+        }
+        catch (AutoMapperMappingException ex)
+        {
+            return ResponseHelper.ErrorResponse<T>(
+            ex.Message,
+            StatusCodes.Status500InternalServerError);
+        }
+        catch (Exception ex)
+        {
+            return ResponseHelper.ErrorResponse<T>(
+            ex.Message,
+            StatusCodes.Status500InternalServerError);
+        }
+    }
     #endregion
 
-    #region Response Helpers
 
-    protected BaseResponse<T> SuccessResponse<T>(
-        T data,
-        string message = "Success.",
-        int statusCode = StatusCodes.Status200OK)
-    {
-        return new BaseResponse<T>
-        {
-            Data = data,
-            Message = message,
-            Success = true,
-            StatusCode = statusCode
-        };
-    }
-
-    protected BaseResponse<T> ErrorResponse<T>(
-        string message,
-        int statusCode = StatusCodes.Status400BadRequest)
-    {
-        return new BaseResponse<T>
-        {
-            Data = default,
-            Message = message,
-            Success = false,
-            StatusCode = statusCode
-        };
-    }
-
-    #endregion
 }

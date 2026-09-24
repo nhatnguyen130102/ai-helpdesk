@@ -15,6 +15,6 @@ namespace AiHelpdesk.Api.Entities
         public string? UpdatedBy { get; set; }
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedDate { get; set; } = DateTime.UtcNow;
-        public bool IsActive { get; set; } = false;
+        public bool IsActive { get; set; } = true;
     }
 }

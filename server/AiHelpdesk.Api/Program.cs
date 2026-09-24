@@ -1,7 +1,15 @@
+using System.Text;
 using AiHelpdesk.Api.Data;
+using AiHelpdesk.Api.RoleProfile;
 using AiHelpdesk.Api.Services;
 using AiHelpdesk.Api.Services.Interfaces;
+using AiHelpdesk.Api.TicketProfile;
+using AiHelpdesk.Api.UserProfile;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,44 +19,116 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddOpenApi();
 
-builder.Services.AddScoped(typeof(IBaseService<>), typeof(BaseService<>));
-
+// =========================
+// Services
+// =========================
 builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
-builder.Services.AddScoped(
-    typeof(IBaseService<>),
-    typeof(BaseService<>));
-    
+builder.Services.AddControllers();
+
+// =========================
+// AutoMapping
+// =========================
+builder.Services.AddAutoMapper(typeof(RoleProfile));
+builder.Services.AddAutoMapper(typeof(TicketProfile));
+builder.Services.AddAutoMapper(typeof(UserProfile));
+
+// =========================
+// JWT Authentication
+// =========================
+
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("JWT Key is not configured.");
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new InvalidOperationException("JWT Issuer is not configured.");
+
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new InvalidOperationException("JWT Audience is not configured.");
+
+Console.WriteLine("========== JWT VALIDATE ==========");
+Console.WriteLine($"JWT KEY LENGTH: {jwtKey.Length}");
+Console.WriteLine($"JWT ISSUER: {jwtIssuer}");
+Console.WriteLine($"JWT AUDIENCE: {jwtAudience}");
+Console.WriteLine("==================================");
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey)
+            ),
+
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+
+            ValidateLifetime = true,
+
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+// =========================
+// Authorization
+// =========================
+
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
+builder.Services.AddEndpointsApiExplorer();
+// builder.Services.AddSwaggerGen();
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter JWT Bearer token"
+    });
+
+    options.AddSecurityRequirement(document =>
+        new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference("Bearer", document)] =
+                []
+        });
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    // app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
-// app.UseHttpsRedirection();
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.MapControllers();
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.MapGet("/", () =>
+Results.Redirect("/swagger/index.html"))
+.ExcludeFromDescription();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
