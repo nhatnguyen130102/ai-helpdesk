@@ -8,7 +8,7 @@ namespace AiHelpdesk.Api.Entities
     public class BaseEntity
     {
         public required int Id { get; set; }
-        public required string Name { get; set; } = string.Empty;
+        public string? Name { get; set; } = string.Empty;
         public required string Code { get; set; }
         public string? Description { get; set; }
         public string? CreatedBy { get; set; }

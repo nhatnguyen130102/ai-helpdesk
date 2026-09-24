@@ -266,31 +266,10 @@ public abstract class BaseService<
 
         return $"{prefix}{nextNumber:D4}";
     }
-    protected async Task<BaseResponse<T>> ExecuteAsync<T>(
-    Func<Task<BaseResponse<T>>> action)
+    protected async Task<T> ExecuteAsync<T>(
+    Func<Task<T>> action)
     {
-        try
-        {
-            return await action();
-        }
-        catch (DbUpdateException ex)
-        {
-            return ResponseHelper.ErrorResponse<T>(
-            ex.InnerException?.Message ?? ex.Message,
-            StatusCodes.Status500InternalServerError);
-        }
-        catch (AutoMapperMappingException ex)
-        {
-            return ResponseHelper.ErrorResponse<T>(
-            ex.Message,
-            StatusCodes.Status500InternalServerError);
-        }
-        catch (Exception ex)
-        {
-            return ResponseHelper.ErrorResponse<T>(
-            ex.Message,
-            StatusCodes.Status500InternalServerError);
-        }
+        return await action();
     }
     #endregion
 

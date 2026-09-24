@@ -1,6 +1,7 @@
 using AiHelpdesk.Api.DTOs.Common;
 using AiHelpdesk.Api.Entities;
 using AiHelpdesk.Api.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AiHelpdesk.Api.Controllers;
@@ -106,7 +107,7 @@ public abstract class BaseController<
     #endregion
 
     #region Delete
-
+    [Authorize(Roles = "Admin")]
     [HttpDelete("Delete/{id:int}")]
     public virtual async Task<IActionResult> Delete(int id)
     {
@@ -114,6 +115,5 @@ public abstract class BaseController<
 
         return HandleResponse(response);
     }
-
     #endregion
 }
