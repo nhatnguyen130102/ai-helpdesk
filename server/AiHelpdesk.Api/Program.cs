@@ -1,5 +1,6 @@
 using System.Text;
 using AiHelpdesk.Api.Data;
+using AiHelpdesk.Api.Middleware;
 using AiHelpdesk.Api.RoleProfile;
 using AiHelpdesk.Api.Services;
 using AiHelpdesk.Api.Services.Interfaces;
@@ -131,6 +132,16 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider
+        .GetRequiredService<ApplicationDbContext>();
+
+    await DbSeeder.SeedAsync(context);
+}
+
+app.UseMiddleware<GlobalExceptionHandler>();
+
 if (app.Environment.IsDevelopment())
 {
     // app.MapOpenApi();
@@ -138,6 +149,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 app.UseHttpsRedirection();
+
+app.UseCors("Frontend");
+
 app.UseAuthentication();
 app.UseAuthorization();
 

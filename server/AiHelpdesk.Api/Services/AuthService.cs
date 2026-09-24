@@ -120,6 +120,7 @@ public class AuthService : IAuthService
             }
 
             var user = await _context.Users
+                .Include(x => x.Role)
                 .FirstOrDefaultAsync(x =>
                     x.UserName == dto.UserName);
 
@@ -176,7 +177,8 @@ public class AuthService : IAuthService
                 UserName = user.UserName,
                 FullName = user.FullName,
                 AccessToken = accessToken,
-                RefreshToken = refreshToken
+                RefreshToken = refreshToken,
+                ExpiresIn = 1800
             };
 
             return ResponseHelper.SuccessResponse(
@@ -444,7 +446,11 @@ public class AuthService : IAuthService
 
             new(
                 "RoleId",
-                user.RoleId.ToString())
+                user.RoleId.ToString()),
+
+            new Claim(
+                ClaimTypes.Role,
+                user.Role.Name),
         };
 
         var token = new JwtSecurityToken(
