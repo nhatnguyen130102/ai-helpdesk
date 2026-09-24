@@ -29,10 +29,12 @@ public abstract class BaseService<
     protected readonly ApplicationDbContext _context;
     protected readonly DbSet<TEntity> _dbSet;
     protected readonly IMapper _mapper;
-    protected BaseService(ApplicationDbContext context, IMapper mapper)
+    protected readonly ICurrentUserService _currentUserService;
+    protected BaseService(ApplicationDbContext context, IMapper mapper, ICurrentUserService currentUserService)
     {
         _context = context;
         _mapper = mapper;
+        _currentUserService = currentUserService;
         _dbSet = context.Set<TEntity>();
     }
 
@@ -104,7 +106,7 @@ public abstract class BaseService<
     var entity = _mapper.Map<TEntity>(dto);
     entity.Code = await GenerateCodeAsync();
     entity.CreatedDate = DateTime.UtcNow;
-    entity.UpdatedDate = DateTime.UtcNow;
+    entity.CreatedBy = _currentUserService.UserName ?? "Anonymous";
     entity.IsActive = true;
 
     await _dbSet.AddAsync(entity);
@@ -150,7 +152,7 @@ public abstract class BaseService<
             _mapper.Map(dto, entity);
 
             entity.UpdatedDate = DateTime.UtcNow;
-            entity.UpdatedBy = "Admin";
+            entity.UpdatedBy = _currentUserService.UserName ?? "Anonymous";
 
             await _context.SaveChangesAsync();
 

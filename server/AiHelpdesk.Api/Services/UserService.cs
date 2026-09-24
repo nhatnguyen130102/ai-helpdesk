@@ -14,7 +14,7 @@ namespace AiHelpdesk.Api.Services
     public class UserService
         : BaseService<User, CreateUserDTO, UpdateUserDTO, GetAllUserDTO, GetByIdUserDTO, FilterParamUser>, IUserService
     {
-        public UserService(ApplicationDbContext context, IMapper mapper) : base(context, mapper)
+        public UserService(ApplicationDbContext context, IMapper mapper, ICurrentUserService currentUserService) : base(context, mapper, currentUserService)
         {
         }
 
