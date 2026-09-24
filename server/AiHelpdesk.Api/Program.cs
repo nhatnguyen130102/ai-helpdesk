@@ -3,6 +3,7 @@ using AiHelpdesk.Api.Data;
 using AiHelpdesk.Api.RoleProfile;
 using AiHelpdesk.Api.Services;
 using AiHelpdesk.Api.Services.Interfaces;
+using AiHelpdesk.Api.TicketCommentProfile;
 using AiHelpdesk.Api.TicketProfile;
 using AiHelpdesk.Api.UserProfile;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,11 +14,24 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpContextAccessor();
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddOpenApi();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 
 // =========================
 // Services
@@ -26,6 +40,8 @@ builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<ITicketCommentService, TicketCommentCommentService>();
 
 builder.Services.AddControllers();
 
@@ -35,6 +51,7 @@ builder.Services.AddControllers();
 builder.Services.AddAutoMapper(typeof(RoleProfile));
 builder.Services.AddAutoMapper(typeof(TicketProfile));
 builder.Services.AddAutoMapper(typeof(UserProfile));
+builder.Services.AddAutoMapper(typeof(TicketCommentProfile));
 
 // =========================
 // JWT Authentication

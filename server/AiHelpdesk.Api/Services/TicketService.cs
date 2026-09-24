@@ -10,8 +10,7 @@ namespace AiHelpdesk.Api.Services;
 public class TicketService
     : BaseService<Ticket, CreateTicketDTO, UpdateTicketDTO, GetAllTicketDTO, GetByIdTicketDTO, FilterParamTicket>, ITicketService
 {
-    public TicketService(ApplicationDbContext context, IMapper mapper)
-        : base(context, mapper)
+    public TicketService(ApplicationDbContext context, IMapper mapper, ICurrentUserService currentUserService) : base(context, mapper, currentUserService)
     {
     }
 

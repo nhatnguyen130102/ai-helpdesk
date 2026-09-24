@@ -12,7 +12,7 @@ namespace AiHelpdesk.Api.Services
 {
     public class RoleService : BaseService<Role, CreateRoleDTO, UpdateRoleDTO, GetAllRoleDTO, GetByIdRoleDTO, FilterParamRole>, IRoleService
     {
-        public RoleService(ApplicationDbContext context, IMapper mapper) : base(context, mapper)
+        public RoleService(ApplicationDbContext context, IMapper mapper, ICurrentUserService currentUserService) : base(context, mapper, currentUserService)
         {
         }
 
