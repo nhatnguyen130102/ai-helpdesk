@@ -7,8 +7,8 @@ using AiHelpdesk.Api.Entities;
 
 namespace AiHelpdesk.Api.Services.Interfaces
 {
-    public interface IUserService : IBaseService<User, CreateUserDTO, UpdateUserDTO, GetAllUserDTO, GetByIdUserDTO, FilterParamUser>
+    public interface IRoleService : IBaseService<Role, CreateRoleDTO, UpdateRoleDTO, GetAllRoleDTO, GetByIdRoleDTO, FilterParamRole>
     {
-
+        
     }
 }

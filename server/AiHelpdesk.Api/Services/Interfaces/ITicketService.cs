@@ -1,8 +1,9 @@
+using AiHelpdesk.Api.DTOs;
 using AiHelpdesk.Api.Entities;
 
 namespace AiHelpdesk.Api.Services.Interfaces;
 
-public interface ITicketService : IBaseService<Ticket>
+public interface ITicketService : IBaseService<Ticket, CreateTicketDTO, UpdateTicketDTO, GetAllTicketDTO, GetByIdTicketDTO, FilterParamTicket>
 {
     Task<List<Ticket>> GetByStatusAsync(string status);
 
