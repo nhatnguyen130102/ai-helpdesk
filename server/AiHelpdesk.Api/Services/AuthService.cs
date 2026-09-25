@@ -14,6 +14,7 @@ using System.Text;
 
 using Microsoft.IdentityModel.Tokens;
 using AiHelpdesk.Api.Helper;
+using System.Security.Cryptography;
 
 namespace AiHelpdesk.Api.Services;
 
@@ -22,15 +23,17 @@ public class AuthService : IAuthService
     private readonly ApplicationDbContext _context;
     private readonly IMapper _mapper;
     private readonly IConfiguration _configuration;
+    private readonly ICurrentUserService _currentUserService;
 
     public AuthService(
         ApplicationDbContext context,
         IMapper mapper,
-        IConfiguration configuration)
+        IConfiguration configuration, ICurrentUserService currentUserService)
     {
         _context = context;
         _mapper = mapper;
         _configuration = configuration;
+        _currentUserService = currentUserService;
     }
 
     #region Register
@@ -152,24 +155,27 @@ public class AuthService : IAuthService
 
             var accessToken = GenerateJwtToken(user);
 
-            var refreshToken = Guid.NewGuid().ToString();
+            var refreshToken = Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(64));
 
-            /*
-             * TODO:
-             * Save refresh token to database.
-             *
-             * Example:
-             *
-             * var refreshTokenEntity = new RefreshToken
-             * {
-             *     Token = refreshToken,
-             *     UserId = user.Id,
-             *     ExpiresAt = DateTime.UtcNow.AddDays(7)
-             * };
-             *
-             * await _context.RefreshTokens.AddAsync(refreshTokenEntity);
-             * await _context.SaveChangesAsync();
-             */
+            var code = await GenerateCodeTokenAsync();
+
+            var refreshTokenEntity = new RefreshToken
+            {
+                Id = 0,
+                Code = code,
+                UserId = user.Id,
+                Token = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddDays(7),
+                CreatedBy = user.UserName,
+                UpdatedBy = user.UserName,
+                CreatedDate = DateTime.UtcNow,
+                UpdatedDate = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            await _context.RefreshTokens.AddAsync(refreshTokenEntity);
+            await _context.SaveChangesAsync();
 
             var response = new AuthResponseDTO
             {
@@ -203,29 +209,88 @@ public class AuthService : IAuthService
     {
         try
         {
-            if (dto == null ||
-                string.IsNullOrWhiteSpace(dto.RefreshToken))
+            if (string.IsNullOrWhiteSpace(dto.RefreshToken))
             {
                 return ResponseHelper.ErrorResponse<AuthResponseDTO>(
                     "Refresh token is required.",
                     StatusCodes.Status400BadRequest);
             }
 
-            /*
-             * TODO:
-             *
-             * 1. Find refresh token in database
-             * 2. Check token exists
-             * 3. Check token is not expired
-             * 4. Check token is not revoked
-             * 5. Get User
-             * 6. Generate new AccessToken
-             * 7. Rotate RefreshToken
-             */
+            var tokenEntity = await _context.RefreshTokens
+                .Include(x => x.User)
+                .ThenInclude(x => x.Role)
+                .FirstOrDefaultAsync(x => x.Token == dto.RefreshToken);
 
-            return ResponseHelper.ErrorResponse<AuthResponseDTO>(
-                "Refresh token functionality is not implemented yet.",
-                StatusCodes.Status501NotImplemented);
+            if (tokenEntity == null)
+            {
+                return ResponseHelper.ErrorResponse<AuthResponseDTO>(
+                    "Invalid refresh token.",
+                    StatusCodes.Status401Unauthorized);
+            }
+
+            if (!tokenEntity.IsActive)
+            {
+                return ResponseHelper.ErrorResponse<AuthResponseDTO>(
+                    "Refresh token has expired or been revoked.",
+                    StatusCodes.Status401Unauthorized);
+            }
+
+            var user = tokenEntity.User;
+
+            if (!user.IsActive)
+            {
+                return ResponseHelper.ErrorResponse<AuthResponseDTO>(
+                    "User account is inactive.",
+                    StatusCodes.Status403Forbidden);
+            }
+
+            // Revoke old refresh token
+            tokenEntity.RevokedAt = DateTime.UtcNow;
+            tokenEntity.UpdatedDate = DateTime.UtcNow;
+            tokenEntity.UpdatedBy = user.UserName;
+
+            // Generate new tokens
+            var accessToken = GenerateJwtToken(user);
+
+            var newRefreshToken =
+                Convert.ToBase64String(
+                    RandomNumberGenerator.GetBytes(64));
+
+            var code = await GenerateCodeTokenAsync();
+
+            var newRefreshTokenEntity = new RefreshToken
+            {
+                Id = 0,
+                Code = code,
+                UserId = user.Id,
+                Token = newRefreshToken,
+                ExpiresAt = DateTime.UtcNow.AddDays(7),
+                CreatedBy = user.UserName,
+                UpdatedBy = user.UserName,
+                CreatedDate = DateTime.UtcNow,
+                UpdatedDate = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            await _context.RefreshTokens.AddAsync(
+                newRefreshTokenEntity);
+
+            await _context.SaveChangesAsync();
+
+            var response = new AuthResponseDTO
+            {
+                UserId = user.Id,
+                UserName = user.UserName,
+                FullName = user.FullName,
+                AccessToken = accessToken,
+                RefreshToken = newRefreshToken,
+                ExpiresIn = 1800
+            };
+
+            return ResponseHelper.SuccessResponse(
+                response,
+                "Token refreshed successfully.",
+                StatusCodes.Status200OK);
         }
         catch (Exception)
         {
@@ -240,7 +305,7 @@ public class AuthService : IAuthService
     #region Logout
 
     public async Task<BaseResponse<bool>> LogoutAsync(
-        string refreshToken)
+    string refreshToken)
     {
         try
         {
@@ -251,17 +316,33 @@ public class AuthService : IAuthService
                     StatusCodes.Status400BadRequest);
             }
 
-            /*
-             * TODO:
-             *
-             * Find refresh token
-             * Mark it as revoked
-             * Save changes
-             */
+            var token = await _context.RefreshTokens
+                .FirstOrDefaultAsync(x => x.Token == refreshToken);
 
-            return ResponseHelper.ErrorResponse<bool>(
-                "Logout functionality is not implemented yet.",
-                StatusCodes.Status501NotImplemented);
+            if (token == null)
+            {
+                return ResponseHelper.ErrorResponse<bool>(
+                    "Refresh token not found.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            if (token.RevokedAt.HasValue)
+            {
+                return ResponseHelper.ErrorResponse<bool>(
+                    "Refresh token has already been revoked.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            token.RevokedAt = DateTime.UtcNow;
+            token.UpdatedDate = DateTime.UtcNow;
+            token.UpdatedBy = _currentUserService.UserName ?? "System";
+
+            await _context.SaveChangesAsync();
+
+            return ResponseHelper.SuccessResponse(
+                true,
+                "Logout successfully.",
+                StatusCodes.Status200OK);
         }
         catch (Exception)
         {
@@ -401,6 +482,32 @@ public class AuthService : IAuthService
         return $"{prefix}-{currentNumber + 1:D4}";
     }
 
+    private async Task<string> GenerateCodeTokenAsync()
+    {
+        const string prefix = "TO";
+
+        var lastCode = await _context.RefreshTokens
+            .AsNoTracking()
+            .OrderByDescending(x => x.Id)
+            .Select(x => x.Code)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(lastCode))
+        {
+            return $"{prefix}-0001";
+        }
+
+        var parts = lastCode.Split('-');
+
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[1], out var currentNumber))
+        {
+            return $"{prefix}-0001";
+        }
+
+        return $"{prefix}-{currentNumber + 1:D4}";
+    }
+
     #endregion
 
     #region JWT
@@ -450,7 +557,7 @@ public class AuthService : IAuthService
 
             new Claim(
                 ClaimTypes.Role,
-                user.Role.Name),
+                user.Role.Name ?? "Employee"),
         };
 
         var token = new JwtSecurityToken(
